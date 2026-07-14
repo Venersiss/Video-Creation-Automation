@@ -66,8 +66,3 @@ After rendering, the pipeline checks that the output is actually a valid MP4 (ch
 
 The 4-stage pipeline architecture, data flow, and integration patterns are accurate representations of the production system.
 
-## Relevance to Application Questions
-
-- **Q12 (AI/automation systems):** Full end-to-end AI-powered content creation pipeline
-- **Q13 (Multi-step LLM agent):** 4-stage pipeline with error handling at each stage, artifact validation, and cloud upload
-- **Q15 (AI producing wrong answers):** Script generation sometimes produced videos where the AI pronounced the company name wrong, or generated scripts that mentioned features the company didn't offer. Fixed by adding company-specific context to the prompt and implementing a post-generation validation step that checks for hallucinated services
