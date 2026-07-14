@@ -1,7 +1,10 @@
 # Automated Video Creation Pipeline
 
 **Role:** Lead Developer & Automation Architect  
-**Tech Stack:** Python 3, Google Gemini API (script gen + TTS), Node.js/Editly (FFmpeg rendering), Cloudflare R2 (S3-compatible storage), n8n
+**Tech Stack:** n8n, Google Gemini API (script gen + TTS), Node.js/Editly (FFmpeg rendering), Cloudflare R2 (S3-compatible storage)
+
+**Files:**
+- `Editly-Video-Pipeline.json` — Sanitized n8n workflow export (webhook trigger, 27 nodes)
 
 ## What It Does
 

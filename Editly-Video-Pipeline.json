@@ -1,0 +1,339 @@
+{
+  "_note": "NDA-SANITIZED: Credentials removed, URLs/asset paths replaced with [REDACTED], JS code summarized, API endpoints generalized. Node structure and connections are accurate.",
+  "name": "[REDACTED] Video Creation - Editly Pipeline",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "video-renderer-editly", "responseMode": "responseNode" },
+      "name": "Inbound Render Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [224, -208]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={\"status\":\"accepted\",\"queue_row_id\":\"={{ $json.queue_row_id }}\"}" },
+      "name": "Respond Immediately",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [448, -208]
+    },
+    {
+      "parameters": {
+        "jsCode": "// [NDA SUMMARY] Normalizes the inbound render request payload.\n// Extracts: company_name, lead_name, industry, website_screenshot URL,\n// angle_type/angle_focus/angle_asset_category (determines messaging and assets),\n// editly_api_url, contractor_asset_paths, existing_notes, queue_row_id.\n// Falls back to sensible defaults if fields are missing."
+      },
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [672, -208]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=[NDA] Generates a sales script for {{company_name}}.\nIndustry-specific prompts: solar (90s, AI appointment setting focus), roofing (30s, angle-based).\nRules: exact intro/outro required, word count target, plain text only, no formatting.",
+        "batching": {}
+      },
+      "name": "Generate Contractor Script",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [896, -208]
+    },
+    {
+      "parameters": { "options": { "maxOutputTokens": 2048, "temperature": 0.4 } },
+      "name": "Google AI Studio Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [976, 32],
+      "credentials": "[REDACTED - Google Gemini API]"
+    },
+    {
+      "parameters": {
+        "jsCode": "// [NDA SUMMARY] Cleans and attaches the generated script.\n// - Trims whitespace, fixes \"X years\" without \"old\" (e.g., \"roof is 15\" -> \"roof is 15 years old\")\n// - Forces first-name-only intro if full name differs from first name\n// - Industry-specific fallback scripts if generation produced empty output\n// - Angle-specific fallbacks: leak, age, value, storm (roofing); savings, efficiency, installation, environment (solar)"
+      },
+      "name": "Attach Generated Contractor Script",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1248, -208]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [{
+            "name": "contractor_tts_prompt",
+            "value": "=[NDA] \"Read this exactly in a confident, professional single-speaker voice: \" + $json.contractor_script"
+          }]
+        }
+      },
+      "name": "Prepare Contractor TTS Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1472, -208]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "[REDACTED - Google TTS API endpoint]",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { contents: [{ parts: [{ text: $json.contractor_tts_prompt }] }], generationConfig: { responseModalities: [\"AUDIO\"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: \"[REDACTED]\" } } } } } }}"
+      },
+      "name": "Generate Contractor TTS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1696, -208],
+      "credentials": "[REDACTED - Google TTS Header Auth]"
+    },
+    {
+      "parameters": {
+        "jsCode": "// [NDA SUMMARY] Converts Gemini TTS PCM audio (24kHz, 16-bit, mono) to WAV Data URI.\n// Builds a 44-byte WAV header (RIFF format), attaches raw PCM samples.\n// Encodes as base64 Data URI: data:audio/wav;base64,...\n// This allows Editly to consume the audio without shared filesystem access."
+      },
+      "name": "Attach Google TTS Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1920, -208]
+    },
+    {
+      "parameters": {
+        "jsCode": "// [NDA SUMMARY] Maps angle_type + angle_asset_category to asset file paths.\n// Angle presets (roofing): leak, age, value, storm - each with 3 images.\n// Angle presets (solar): savings(5 images), efficiency(4), installation(4), environment(2).\n// Asset paths are server-local: /app/assets/[industry]/[angle]/*.jpg|png\n// Fallback to angle_type if category not found directly."
+      },
+      "name": "Select Contractor Assets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2144, -208]
+    },
+    {
+      "parameters": {
+        "jsCode": "// [NDA SUMMARY] Builds the Editly video configuration JSON.\n// Video specs: 720x1280 (portrait), 20fps.\n// Clip structure (5-clip):\n//   1. Website screenshot (5s, ken-burns zoom-in)\n//   2-3. Angle-specific asset images (4s each)\n//   4. Industry-specific image cards with headlines\n//   5. Call-to-action title card (4s)\n// Audio: WAV Data URI from TTS output.\n// Transitions: random 0.5s between clips.\n// Background music: [NDA - removed].\n// Solar path: extended 90s structure with more image cards."
+      },
+      "name": "Build Editly Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2368, -208]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "[REDACTED - Video Renderer API URL]/render-async",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { editlyConfig: $json.editlyConfig } }}",
+        "options": { "response": { "response": { "fullResponse": true, "neverError": true, "responseFormat": "text" } }, "timeout": 900000 }
+      },
+      "name": "Call Editly Render API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2592, -208]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [{ "leftValue": "={{ $json.statusCode }}", "rightValue": 202, "operator": { "type": "number", "operation": "equals" } }],
+          "combinator": "and"
+        }
+      },
+      "name": "Check if Async",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [2816, -208]
+    },
+    {
+      "parameters": { "amount": 12, "unit": "minutes" },
+      "name": "Wait for Render",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [3040, -272]
+    },
+    {
+      "parameters": {
+        "url": "=[REDACTED - Render download URL]/render-download/{{$json.headers['x-render-job-id']}}",
+        "options": { "response": { "response": { "responseFormat": "file" } }, "timeout": 600000 }
+      },
+      "name": "Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [3264, -272]
+    },
+    {
+      "parameters": {
+        "jsCode": "// [NDA SUMMARY] Validates the downloaded MP4 artifact.\n// Checks: HTTP status 2xx, binary file present, file size > 0.\n// Sets valid_mp4_artifact=true/false, generates file_name, object_key.\n// Constructs public video URL from R2 bucket base URL.\n// Passes queue_row_id and existing_notes through for later Baserow update."
+      },
+      "name": "Detect Render Artifact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3488, -208]
+    },
+    {
+      "parameters": { "mode": "expression", "numberOutputs": 2, "output": "={{ $json.valid_mp4_artifact === true ? 0 : 1 }}" },
+      "name": "Route Storage Stage",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [3712, -208]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "[REDACTED - R2 bucket name]",
+        "fileName": "={{ $json.file_name }}",
+        "binaryPropertyName": "={{ $json.binary_field }}",
+        "additionalFields": { "parentFolderKey": "prospecting/videos" }
+      },
+      "name": "Upload Video to R2",
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [3936, -304],
+      "credentials": "[REDACTED - Cloudflare R2 S3 credentials]"
+    },
+    {
+      "parameters": {
+        "jsCode": "// [NDA SUMMARY] Attaches upload metadata: success flag, video_url, object_key,\n// file_name, render_job_id, binary_size. Passes through queue_row_id and\n// existing_notes for the final Baserow update."
+      },
+      "name": "Attach Render Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4160, -304]
+    },
+    {
+      "parameters": { "mode": "expression", "numberOutputs": 2, "output": "={{ $json.upload_success === true ? 0 : 1 }}" },
+      "name": "Evaluate Upload Result",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [4384, -304]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "name": "message", "value": "Render request succeeded and video uploaded to cloud storage" },
+            { "name": "video_url", "value": "={{ $json.video_url ?? null }}" },
+            { "name": "queue_row_id", "value": "={{ $json.queue_row_id ?? null }}" },
+            { "name": "render_job_id", "value": "={{ $json.render_job_id ?? null }}" }
+          ]
+        }
+      },
+      "name": "Build Upload Success Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [4608, -400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [{ "leftValue": "={{ ($json.queue_row_id ?? \"\").toString().trim() }}", "operator": { "type": "string", "operation": "notEmpty" }, "rightValue": "" }],
+          "combinator": "and"
+        }
+      },
+      "name": "Has Queue Row ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [4832, -400]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "databaseId": "[REDACTED]",
+        "tableId": "[REDACTED]",
+        "rowId": "={{ Number($json.queue_row_id) }}",
+        "fieldsUi": {
+          "_summary": "[NDA] Updates 3 fields on queue row: Video Created=true, Rendered Video URL, Notes with timestamp + angle info"
+        }
+      },
+      "name": "Update Queue Row From Render",
+      "type": "n8n-nodes-base.baserow",
+      "typeVersion": 1.1,
+      "position": [5056, -464],
+      "credentials": "[REDACTED - Baserow account]"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "name": "message", "value": "={{ success message }}" },
+            { "name": "video_url", "value": "={{ $json.video_url ?? null }}" }
+          ]
+        }
+      },
+      "name": "Return Upload Success Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [5280, -400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "name": "message", "value": "Render succeeded but cloud upload failed" }
+          ]
+        }
+      },
+      "name": "Build Storage Failure Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [4608, -208]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "name": "message", "value": "Render request failed or no valid MP4 binary returned" },
+            { "name": "status_code", "value": "={{ $json.statusCode ?? 500 }}" }
+          ]
+        }
+      },
+      "name": "Build Render Failure Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [3936, -112]
+    }
+  ],
+  "connections": {
+    "Inbound Render Request": { "main": [[{ "node": "Respond Immediately", "type": "main", "index": 0 }]] },
+    "Respond Immediately": { "main": [[{ "node": "Normalize Input", "type": "main", "index": 0 }]] },
+    "Normalize Input": { "main": [[{ "node": "Generate Contractor Script", "type": "main", "index": 0 }]] },
+    "Google AI Studio Chat Model": { "ai_languageModel": [[{ "node": "Generate Contractor Script", "type": "ai_languageModel", "index": 0 }]] },
+    "Generate Contractor Script": { "main": [[{ "node": "Attach Generated Contractor Script", "type": "main", "index": 0 }]] },
+    "Attach Generated Contractor Script": { "main": [[{ "node": "Prepare Contractor TTS Request", "type": "main", "index": 0 }]] },
+    "Prepare Contractor TTS Request": { "main": [[{ "node": "Generate Contractor TTS", "type": "main", "index": 0 }]] },
+    "Generate Contractor TTS": { "main": [[{ "node": "Attach Google TTS Audio", "type": "main", "index": 0 }]] },
+    "Attach Google TTS Audio": { "main": [[{ "node": "Select Contractor Assets", "type": "main", "index": 0 }]] },
+    "Select Contractor Assets": { "main": [[{ "node": "Build Editly Config", "type": "main", "index": 0 }]] },
+    "Build Editly Config": { "main": [[{ "node": "Call Editly Render API", "type": "main", "index": 0 }]] },
+    "Call Editly Render API": { "main": [[{ "node": "Check if Async", "type": "main", "index": 0 }]] },
+    "Check if Async": {
+      "main": [
+        [{ "node": "Wait for Render", "type": "main", "index": 0 }],
+        [{ "node": "Detect Render Artifact", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait for Render": { "main": [[{ "node": "Download Video", "type": "main", "index": 0 }]] },
+    "Download Video": { "main": [[{ "node": "Detect Render Artifact", "type": "main", "index": 0 }]] },
+    "Detect Render Artifact": { "main": [[{ "node": "Route Storage Stage", "type": "main", "index": 0 }]] },
+    "Route Storage Stage": {
+      "main": [
+        [{ "node": "Upload Video to R2", "type": "main", "index": 0 }],
+        [{ "node": "Build Render Failure Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upload Video to R2": { "main": [[{ "node": "Attach Render Metadata", "type": "main", "index": 0 }]] },
+    "Attach Render Metadata": { "main": [[{ "node": "Evaluate Upload Result", "type": "main", "index": 0 }]] },
+    "Evaluate Upload Result": {
+      "main": [
+        [{ "node": "Build Upload Success Response", "type": "main", "index": 0 }],
+        [{ "node": "Build Storage Failure Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Upload Success Response": { "main": [[{ "node": "Has Queue Row ID?", "type": "main", "index": 0 }]] },
+    "Has Queue Row ID?": {
+      "main": [
+        [{ "node": "Update Queue Row From Render", "type": "main", "index": 0 }],
+        [{ "node": "Return Upload Success Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update Queue Row From Render": { "main": [[{ "node": "Return Upload Success Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "description": "4-stage automated video production pipeline: (1) Gemini script generation per industry/angle, (2) Google TTS voiceover (PCM->WAV), (3) Editly/FFmpeg render with angle-specific assets (720x1280, 20fps, 5-clip), (4) S3 upload to cloud storage + CRM update. Supports async rendering with 12-min wait + download."
+}
